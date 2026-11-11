@@ -33,14 +33,22 @@ class TodayWordScreen extends StatefulWidget {
 }
 
 class _TodayWordScreenState extends State<TodayWordScreen> {
-  // 방금 백엔드에서 생성한 JSON URL
   final String dataUrl =
       'https://raw.githubusercontent.com/hyuckiii-real/todays-x-data/main/today.json';
 
   Map<String, dynamic>? wordData;
   bool isLoading = true;
-  bool hasError = false;
   bool isMemorized = false;
+
+  final Map<String, dynamic> fallbackWord = {
+    "date": "TODAY",
+    "word": "Serendipity",
+    "phonetic": "/ˌser.ənˈdɪp.ə.t̬i/",
+    "part_of_speech": "명사",
+    "meaning": "뜻밖의 행운, 우연한 발견",
+    "example_en": "Finding this great app was pure serendipity.",
+    "example_ko": "이 멋진 앱을 발견한 것은 완전한 뜻밖의 행운이었다."
+  };
 
   @override
   void initState() {
@@ -51,11 +59,10 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
   Future<void> fetchTodayWord() async {
     setState(() {
       isLoading = true;
-      hasError = false;
     });
 
     try {
-      final res = await http.get(Uri.parse(dataUrl));
+      final res = await http.get(Uri.parse(dataUrl)).timeout(const Duration(seconds: 10));
       if (res.statusCode == 200) {
         final data = json.decode(utf8.decode(res.bodyBytes));
         final prefs = await SharedPreferences.getInstance();
@@ -67,18 +74,14 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
           isMemorized = checked;
           isLoading = false;
         });
-      } else {
-        setState(() {
-          isLoading = false;
-          hasError = true;
-        });
+        return;
       }
-    } catch (e) {
-      setState(() {
-        isLoading = false;
-        hasError = true;
-      });
-    }
+    } catch (_) {}
+
+    setState(() {
+      wordData = fallbackWord;
+      isLoading = false;
+    });
   }
 
   Future<void> toggleMemorized() async {
@@ -113,7 +116,6 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
                 ),
               ),
             ),
-            // 하단 고정 배너 광고 자리 (실제 AdMob 탑재 전 Mock 영역)
             Container(
               height: 55,
               width: double.infinity,
@@ -134,19 +136,8 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
     if (isLoading) {
       return const CircularProgressIndicator();
     }
-    if (hasError || wordData == null) {
-      return Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text('오늘의 단어를 불러오지 못했습니다.'),
-          const SizedBox(height: 12),
-          ElevatedButton(
-            onPressed: fetchTodayWord,
-            child: const Text('다시 시도'),
-          ),
-        ],
-      );
-    }
+
+    final data = wordData ?? fallbackWord;
 
     return Card(
       elevation: 4,
@@ -162,7 +153,7 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  wordData!['date'] ?? '',
+                  data['date'] ?? '',
                   style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
                 ),
                 Container(
@@ -172,7 +163,7 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    wordData!['part_of_speech'] ?? '',
+                    data['part_of_speech'] ?? '',
                     style: TextStyle(
                       color: Colors.blue.shade700,
                       fontWeight: FontWeight.bold,
@@ -184,7 +175,7 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
             ),
             const SizedBox(height: 16),
             Text(
-              wordData!['word'] ?? '',
+              data['word'] ?? '',
               style: const TextStyle(
                 fontSize: 32,
                 fontWeight: FontWeight.bold,
@@ -193,12 +184,12 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
             ),
             const SizedBox(height: 4),
             Text(
-              wordData!['phonetic'] ?? '',
+              data['phonetic'] ?? '',
               style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
             ),
             const SizedBox(height: 16),
             Text(
-              wordData!['meaning'] ?? '',
+              data['meaning'] ?? '',
               style: const TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w600,
@@ -207,7 +198,7 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
             ),
             const Divider(height: 36),
             Text(
-              wordData!['example_en'] ?? '',
+              data['example_en'] ?? '',
               style: const TextStyle(
                 fontSize: 15,
                 fontStyle: FontStyle.italic,
@@ -216,7 +207,7 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
             ),
             const SizedBox(height: 6),
             Text(
-              wordData!['example_ko'] ?? '',
+              data['example_ko'] ?? '',
               style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
             ),
             const SizedBox(height: 28),
