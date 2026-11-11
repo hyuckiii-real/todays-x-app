@@ -23,10 +23,11 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: 안드로이드 플랫폼 템플릿 자동 복원
+      - name: 안드로이드 플랫폼 템플릿 복원 및 인터넷 권한 자동 주입
         run: |
-          # 최신 v2 임베딩 기반의 완전한 Android 프로젝트 폴더를 자동 생성
           flutter create . --org com.todaysx --platforms=android --project-name todays_word
+          # 생성된 AndroidManifest.xml에 인터넷 권한 한 줄 자동 삽입
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>' android/app/src/main/AndroidManifest.xml
 
       - name: 패키지 설치
         run: flutter pub get
