@@ -23,6 +23,11 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: 안드로이드 플랫폼 템플릿 자동 복원
+        run: |
+          # 최신 v2 임베딩 기반의 완전한 Android 프로젝트 폴더를 자동 생성
+          flutter create . --org com.todaysx --platforms=android --project-name todays_word
+
       - name: 패키지 설치
         run: flutter pub get
 
