@@ -2,8 +2,11 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await MobileAds.instance.initialize();
   runApp(const MyApp());
 }
 
@@ -36,52 +39,81 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
   final String dataUrl =
       'https://raw.githubusercontent.com/hyuckiii-real/todays-x-data/main/today.json';
 
+  // 테스트용 배너 ID (먼저 이걸로 테스트 후 출시 직전 아래 실제 ID로 교체)
+  final String bannerAdUnitId = 'ca-app-pub-3940256099942544/6300978111';
+  // 본인 실제 배너 ID: 'ca-app-pub-1402331019363344/4217254550';
+
+  BannerAd? _bannerAd;
+  bool _isBannerLoaded = false;
+
   Map<String, dynamic>? wordData;
   bool isLoading = true;
+  String? errorMessage;
   bool isMemorized = false;
-
-  final Map<String, dynamic> fallbackWord = {
-    "date": "TODAY",
-    "word": "Serendipity",
-    "phonetic": "/ˌser.ənˈdɪp.ə.t̬i/",
-    "part_of_speech": "명사",
-    "meaning": "뜻밖의 행운, 우연한 발견",
-    "example_en": "Finding this great app was pure serendipity.",
-    "example_ko": "이 멋진 앱을 발견한 것은 완전한 뜻밖의 행운이었다."
-  };
 
   @override
   void initState() {
     super.initState();
     fetchTodayWord();
+    loadBannerAd();
+  }
+
+  void loadBannerAd() {
+    _bannerAd = BannerAd(
+      adUnitId: bannerAdUnitId,
+      size: AdSize.banner,
+      request: const AdRequest(),
+      listener: BannerAdListener(
+        onAdLoaded: (ad) {
+          setState(() {
+            _isBannerLoaded = true;
+          });
+        },
+        onAdFailedToLoad: (ad, error) {
+          ad.dispose();
+          debugPrint('배너 광고 로드 실패: $error');
+        },
+      ),
+    )..load();
+  }
+
+  @override
+  void dispose() {
+    _bannerAd?.dispose();
+    super.dispose();
   }
 
   Future<void> fetchTodayWord() async {
     setState(() {
       isLoading = true;
+      errorMessage = null;
     });
 
     try {
-      final res = await http.get(Uri.parse(dataUrl)).timeout(const Duration(seconds: 10));
+      final res = await http.get(Uri.parse(dataUrl)).timeout(const Duration(seconds: 15));
       if (res.statusCode == 200) {
-        final data = json.decode(utf8.decode(res.bodyBytes));
+        final decoded = json.decode(utf8.decode(res.bodyBytes));
         final prefs = await SharedPreferences.getInstance();
-        final savedKey = 'memorized_${data["date"]}';
+        final savedKey = 'memorized_${decoded["date"]}';
         final checked = prefs.getBool(savedKey) ?? false;
 
         setState(() {
-          wordData = data;
+          wordData = decoded;
           isMemorized = checked;
           isLoading = false;
         });
-        return;
+      } else {
+        setState(() {
+          errorMessage = '서버 응답 오류 (HTTP ${res.statusCode})';
+          isLoading = false;
+        });
       }
-    } catch (_) {}
-
-    setState(() {
-      wordData = fallbackWord;
-      isLoading = false;
-    });
+    } catch (e) {
+      setState(() {
+        errorMessage = '네트워크 통신 오류: $e';
+        isLoading = false;
+      });
+    }
   }
 
   Future<void> toggleMemorized() async {
@@ -116,16 +148,14 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
                 ),
               ),
             ),
-            Container(
-              height: 55,
-              width: double.infinity,
-              color: Colors.grey.shade200,
-              alignment: Alignment.center,
-              child: Text(
-                '구글 AdMob 배너 광고 영역',
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-              ),
-            ),
+            if (_isBannerLoaded && _bannerAd != null)
+              SizedBox(
+                width: _bannerAd!.size.width.toDouble(),
+                height: _bannerAd!.size.height.toDouble(),
+                child: AdWidget(ad: _bannerAd!),
+              )
+            else
+              const SizedBox(height: 50),
           ],
         ),
       ),
@@ -137,7 +167,25 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
       return const CircularProgressIndicator();
     }
 
-    final data = wordData ?? fallbackWord;
+    if (errorMessage != null || wordData == null) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.error_outline, size: 48, color: Colors.redAccent),
+          const SizedBox(height: 12),
+          Text(
+            errorMessage ?? '단어를 불러오지 못했습니다.',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 14, color: Colors.black87),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: fetchTodayWord,
+            child: const Text('다시 시도'),
+          ),
+        ],
+      );
+    }
 
     return Card(
       elevation: 4,
@@ -153,7 +201,7 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  data['date'] ?? '',
+                  wordData!['date'] ?? '',
                   style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
                 ),
                 Container(
@@ -163,7 +211,7 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    data['part_of_speech'] ?? '',
+                    wordData!['part_of_speech'] ?? '',
                     style: TextStyle(
                       color: Colors.blue.shade700,
                       fontWeight: FontWeight.bold,
@@ -175,7 +223,7 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
             ),
             const SizedBox(height: 16),
             Text(
-              data['word'] ?? '',
+              wordData!['word'] ?? '',
               style: const TextStyle(
                 fontSize: 32,
                 fontWeight: FontWeight.bold,
@@ -184,12 +232,12 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
             ),
             const SizedBox(height: 4),
             Text(
-              data['phonetic'] ?? '',
+              wordData!['phonetic'] ?? '',
               style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
             ),
             const SizedBox(height: 16),
             Text(
-              data['meaning'] ?? '',
+              wordData!['meaning'] ?? '',
               style: const TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w600,
@@ -198,7 +246,7 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
             ),
             const Divider(height: 36),
             Text(
-              data['example_en'] ?? '',
+              wordData!['example_en'] ?? '',
               style: const TextStyle(
                 fontSize: 15,
                 fontStyle: FontStyle.italic,
@@ -207,7 +255,7 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
             ),
             const SizedBox(height: 6),
             Text(
-              data['example_ko'] ?? '',
+              wordData!['example_ko'] ?? '',
               style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
             ),
             const SizedBox(height: 28),
