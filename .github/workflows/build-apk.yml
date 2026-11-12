@@ -23,11 +23,32 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: 안드로이드 플랫폼 템플릿 복원 및 인터넷 권한 자동 주입
+      - name: 안드로이드 플랫폼 복원 및 권한/애드몹 ID 자동 주입
         run: |
           flutter create . --org com.todaysx --platforms=android --project-name todays_word
-          # 생성된 AndroidManifest.xml에 인터넷 권한 한 줄 자동 삽입
-          sed -i '/<application/i \    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>' android/app/src/main/AndroidManifest.xml
+          
+          python3 -c "
+          path = 'android/app/src/main/AndroidManifest.xml'
+          with open(path, 'r', encoding='utf-8') as f:
+              content = f.read()
+          
+          # 1. 인터넷 권한 주입
+          perms = '\n    <uses-permission android:name=\"android.permission.INTERNET\"/>\n    <uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\"/>\n'
+          if 'android.permission.INTERNET' not in content:
+              content = content.replace('<application', perms + '    <application', 1)
+          
+          # 2. 구글 애드몹 앱 ID 주입
+          # 테스트용: ca-app-pub-3940256099942544~3347511713
+          # 본인 실제 앱 ID (출시 직전 교체): ca-app-pub-1402331019363344~4640072179
+          admob_id = 'ca-app-pub-3940256099942544~3347511713'
+          admob_meta = f'\n        <meta-data\n            android:name=\"com.google.android.gms.ads.APPLICATION_ID\"\n            android:value=\"{admob_id}\"/>\n'
+          if 'com.google.android.gms.ads.APPLICATION_ID' not in content:
+              content = content.replace('</application>', admob_meta + '    </application>', 1)
+              
+          with open(path, 'w', encoding='utf-8') as f:
+              f.write(content)
+          print('권한 및 애드몹 ID 주입 완료')
+          "
 
       - name: 패키지 설치
         run: flutter pub get
