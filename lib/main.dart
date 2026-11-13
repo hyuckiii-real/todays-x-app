@@ -4,9 +4,10 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  await MobileAds.instance.initialize();
+  // 광고 SDK 초기화는 await로 화면 진입을 막지 않고 백그라운드에서 비동기 실행
+  MobileAds.instance.initialize();
   runApp(const MyApp());
 }
 
@@ -39,7 +40,7 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
   final String dataUrl =
       'https://raw.githubusercontent.com/hyuckiii-real/todays-x-data/main/today.json';
 
-  // 테스트용 배너 ID (먼저 이걸로 테스트 후 출시 직전 아래 실제 ID로 교체)
+  // 테스트용 배너 ID (테스트 확인 후 출시 직전 본인 실제 ID로 교체)
   final String bannerAdUnitId = 'ca-app-pub-3940256099942544/6300978111';
   // 본인 실제 배너 ID: 'ca-app-pub-1402331019363344/4217254550';
 
@@ -54,8 +55,11 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
   @override
   void initState() {
     super.initState();
-    fetchTodayWord();
-    loadBannerAd();
+    initWordData();
+    // 화면이 먼저 그려진 직후(0.3초 뒤) 광고 요청 시작
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted) loadBannerAd();
+    });
   }
 
   void loadBannerAd() {
@@ -65,9 +69,11 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
       request: const AdRequest(),
       listener: BannerAdListener(
         onAdLoaded: (ad) {
-          setState(() {
-            _isBannerLoaded = true;
-          });
+          if (mounted) {
+            setState(() {
+              _isBannerLoaded = true;
+            });
+          }
         },
         onAdFailedToLoad: (ad, error) {
           ad.dispose();
@@ -83,36 +89,75 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
     super.dispose();
   }
 
-  Future<void> fetchTodayWord() async {
-    setState(() {
-      isLoading = true;
-      errorMessage = null;
-    });
+  // 1. 기기에 저장된 캐시가 있으면 0.01초 만에 즉시 화면 표시 후 백그라운드 최신화
+  Future<void> initWordData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final cachedJson = prefs.getString('cached_today_word');
 
-    try {
-      final res = await http.get(Uri.parse(dataUrl)).timeout(const Duration(seconds: 15));
-      if (res.statusCode == 200) {
-        final decoded = json.decode(utf8.decode(res.bodyBytes));
-        final prefs = await SharedPreferences.getInstance();
+    if (cachedJson != null) {
+      try {
+        final decoded = json.decode(cachedJson);
         final savedKey = 'memorized_${decoded["date"]}';
         final checked = prefs.getBool(savedKey) ?? false;
 
-        setState(() {
-          wordData = decoded;
-          isMemorized = checked;
-          isLoading = false;
-        });
-      } else {
+        if (mounted) {
+          setState(() {
+            wordData = decoded;
+            isMemorized = checked;
+            isLoading = false; // 캐시로 즉시 로딩 해제!
+          });
+        }
+      } catch (_) {}
+    }
+
+    // 백그라운드에서 최신 JSON 확인 (첫 실행이면 여기서 받아옴)
+    await fetchTodayWord(silent: cachedJson != null);
+  }
+
+  Future<void> fetchTodayWord({bool silent = false}) async {
+    if (!silent && mounted) {
+      setState(() {
+        isLoading = true;
+        errorMessage = null;
+      });
+    }
+
+    try {
+      final res = await http
+          .get(Uri.parse(dataUrl))
+          .timeout(const Duration(seconds: 8));
+      if (res.statusCode == 200) {
+        final rawString = utf8.decode(res.bodyBytes);
+        final decoded = json.decode(rawString);
+        final prefs = await SharedPreferences.getInstance();
+
+        // 다음 실행 시 0초 로딩을 위해 로컬에 캐싱 저장
+        await prefs.setString('cached_today_word', rawString);
+
+        final savedKey = 'memorized_${decoded["date"]}';
+        final checked = prefs.getBool(savedKey) ?? false;
+
+        if (mounted) {
+          setState(() {
+            wordData = decoded;
+            isMemorized = checked;
+            isLoading = false;
+            errorMessage = null;
+          });
+        }
+      } else if (!silent && mounted) {
         setState(() {
           errorMessage = '서버 응답 오류 (HTTP ${res.statusCode})';
           isLoading = false;
         });
       }
     } catch (e) {
-      setState(() {
-        errorMessage = '네트워크 통신 오류: $e';
-        isLoading = false;
-      });
+      if (!silent && mounted) {
+        setState(() {
+          errorMessage = '네트워크 연결을 확인해 주세요.';
+          isLoading = false;
+        });
+      }
     }
   }
 
@@ -130,6 +175,55 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 첫 실행으로 캐시가 아직 없는 0.5초 동안 보여줄 깔끔한 브랜드 소개 화면
+    if (isLoading && wordData == null) {
+      return Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: const Icon(
+                  Icons.auto_stories_rounded,
+                  size: 48,
+                  color: Color(0xFF2563EB),
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                '오늘의 영어단어',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '하루 한 단어, 가볍게 채우는 영어 습관',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+              const SizedBox(height: 28),
+              const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2.5),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('오늘의 단어', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -163,24 +257,20 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
   }
 
   Widget buildContent() {
-    if (isLoading) {
-      return const CircularProgressIndicator();
-    }
-
-    if (errorMessage != null || wordData == null) {
+    if (errorMessage != null && wordData == null) {
       return Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.error_outline, size: 48, color: Colors.redAccent),
+          const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.redAccent),
           const SizedBox(height: 12),
           Text(
-            errorMessage ?? '단어를 불러오지 못했습니다.',
+            errorMessage!,
             textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 14, color: Colors.black87),
+            style: const TextStyle(fontSize: 15, color: Colors.black87),
           ),
           const SizedBox(height: 16),
           ElevatedButton(
-            onPressed: fetchTodayWord,
+            onPressed: () => fetchTodayWord(silent: false),
             child: const Text('다시 시도'),
           ),
         ],
