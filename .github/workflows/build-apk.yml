@@ -23,13 +23,14 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: 안드로이드 플랫폼 복원 및 Manifest/Lint 세팅
+      - name: 안드로이드 플랫폼 복원 및 AdMob 완벽 세팅
         run: |
           flutter create . --org com.todaysx --platforms=android --project-name todays_word
           
           python3 - << 'PYEOF'
-          import os
+          import os, re
 
+          # 1. AndroidManifest.xml 정상 작성
           manifest_xml = """<manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.INTERNET"/>
               <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
@@ -71,19 +72,51 @@ jobs:
               </queries>
           </manifest>
           """
-
           with open("android/app/src/main/AndroidManifest.xml", "w", encoding="utf-8") as f:
               f.write(manifest_xml)
 
+          # 2. build.gradle(.kts) 설정: minSdk 23 + R8 난독화 끄기 + Lint 무시
           if os.path.exists("android/app/build.gradle.kts"):
-              with open("android/app/build.gradle.kts", "a", encoding="utf-8") as f:
-                  f.write("\nandroid {\n    lint {\n        checkReleaseBuilds = false\n        abortOnError = false\n    }\n}\n")
+              with open("android/app/build.gradle.kts", "r", encoding="utf-8") as f:
+                  g = f.read()
+              g = re.sub(r'minSdk\s*=\s*flutter\.minSdkVersion', 'minSdk = 23', g)
+              g += """
+          android {
+              buildTypes {
+                  release {
+                      isMinifyEnabled = false
+                      isShrinkResources = false
+                  }
+              }
+              lint {
+                  checkReleaseBuilds = false
+                  abortOnError = false
+              }
+          }
+          """
+              with open("android/app/build.gradle.kts", "w", encoding="utf-8") as f:
+                  f.write(g)
           elif os.path.exists("android/app/build.gradle"):
-              with open("android/app/build.gradle", "a", encoding="utf-8") as f:
-                  f.write("\nandroid {\n    lintOptions {\n        checkReleaseBuilds false\n        abortOnError false\n    }\n}\n")
+              with open("android/app/build.gradle", "r", encoding="utf-8") as f:
+                  g = f.read()
+              g = re.sub(r'minSdkVersion\s+flutter\.minSdkVersion', 'minSdkVersion 23', g)
+              g += """
+          android {
+              buildTypes {
+                  release {
+                      minifyEnabled false
+                      shrinkResources false
+                  }
+              }
+              lintOptions {
+                  checkReleaseBuilds false
+                  abortOnError false
+              }
+          }
+          """
+              with open("android/app/build.gradle", "w", encoding="utf-8") as f:
+                  f.write(g)
           PYEOF
-
-          cat android/app/src/main/AndroidManifest.xml
 
       - name: 패키지 설치
         run: flutter pub get
