@@ -23,40 +23,25 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: 안드로이드 플랫폼 복원 및 권한/애드몹/Lint 설정
+      - name: 안드로이드 플랫폼 복원 및 권한/애드몹 ID/Lint 설정
         run: |
           flutter create . --org com.todaysx --platforms=android --project-name todays_word
           
-          python3 -c "
-          # 1. AndroidManifest.xml 권한 및 애드몹 앱 ID 주입
-          manifest_path = 'android/app/src/main/AndroidManifest.xml'
-          with open(manifest_path, 'r', encoding='utf-8') as f:
-              content = f.read()
+          # 1. 인터넷 권한 주입
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>' android/app/src/main/AndroidManifest.xml
           
-          perms = '\n    <uses-permission android:name=\"android.permission.INTERNET\"/>\n    <uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\"/>\n'
-          if 'android.permission.INTERNET' not in content:
-              content = content.replace('<application', perms + '    <application', 1)
+          # 2. 구글 애드몹 앱 ID 주입 (현재는 테스트 앱 ID 적용)
+          sed -i '/<\/application>/i \        <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-3940256099942544~3347511713"/>' android/app/src/main/AndroidManifest.xml
           
-          # 테스트 앱 ID (출시 직전 본인 실제 ID ca-app-pub-1402331019363344~4640072179 로 교체)
-          admob_id = 'ca-app-pub-3940256099942544~3347511713'
-          admob_meta = f'\n        <meta-data\n            android:name=\"com.google.android.gms.ads.APPLICATION_ID\"\n            android:value=\"{admob_id}\"/>\n'
-          if 'com.google.android.gms.ads.APPLICATION_ID' not in content:
-              content = content.replace('</application>', admob_meta + '    </application>', 1)
-              
-          with open(manifest_path, 'w', encoding='utf-8') as f:
-              f.write(content)
-
-          # 2. 외부 라이브러리 Lint 충돌 방지 설정 추가
-          import os
-          gradle_file = 'android/app/build.gradle.kts' if os.path.exists('android/app/build.gradle.kts') else 'android/app/build.gradle'
-          with open(gradle_file, 'r', encoding='utf-8') as f:
-              g_content = f.read()
+          # 3. 주입 결과 로그 확인
+          cat android/app/src/main/AndroidManifest.xml
           
-          lint_block = '\nandroid {\n    lint {\n        checkReleaseBuilds = false\n        abortOnError = false\n    }\n}\n' if gradle_file.endswith('.kts') else '\nandroid {\n    lintOptions {\n        checkReleaseBuilds false\n        abortOnError false\n    }\n}\n'
-          with open(gradle_file, 'w', encoding='utf-8') as f:
-              f.write(g_content + lint_block)
-          print('권한, 애드몹 ID 및 Lint 우회 설정 완료')
-          "
+          # 4. 외부 라이브러리 Lint 충돌 방지 설정
+          if [ -f "android/app/build.gradle.kts" ]; then
+            printf '\nandroid {\n    lint {\n        checkReleaseBuilds = false\n        abortOnError = false\n    }\n}\n' >> android/app/build.gradle.kts
+          else
+            printf '\nandroid {\n    lintOptions {\n        checkReleaseBuilds false\n        abortOnError false\n    }\n}\n' >> android/app/build.gradle
+          fi
 
       - name: 패키지 설치
         run: flutter pub get
