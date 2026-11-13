@@ -6,7 +6,6 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  // 광고 SDK 초기화는 await로 화면 진입을 막지 않고 백그라운드에서 비동기 실행
   MobileAds.instance.initialize();
   runApp(const MyApp());
 }
@@ -40,12 +39,13 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
   final String dataUrl =
       'https://raw.githubusercontent.com/hyuckiii-real/todays-x-data/main/today.json';
 
-  // 테스트용 배너 ID (테스트 확인 후 출시 직전 본인 실제 ID로 교체)
+  // 구글 공식 안드로이드 테스트 배너 ID (출시 직전 본인 ID로 교체)
   final String bannerAdUnitId = 'ca-app-pub-3940256099942544/6300978111';
   // 본인 실제 배너 ID: 'ca-app-pub-1402331019363344/4217254550';
 
   BannerAd? _bannerAd;
   bool _isBannerLoaded = false;
+  String _adStatus = '광고 불러오는 중...';
 
   Map<String, dynamic>? wordData;
   bool isLoading = true;
@@ -56,7 +56,6 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
   void initState() {
     super.initState();
     initWordData();
-    // 화면이 먼저 그려진 직후(0.3초 뒤) 광고 요청 시작
     Future.delayed(const Duration(milliseconds: 300), () {
       if (mounted) loadBannerAd();
     });
@@ -77,7 +76,11 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
         },
         onAdFailedToLoad: (ad, error) {
           ad.dispose();
-          debugPrint('배너 광고 로드 실패: $error');
+          if (mounted) {
+            setState(() {
+              _adStatus = '광고 대기 (${error.code}: ${error.message})';
+            });
+          }
         },
       ),
     )..load();
@@ -89,7 +92,6 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
     super.dispose();
   }
 
-  // 1. 기기에 저장된 캐시가 있으면 0.01초 만에 즉시 화면 표시 후 백그라운드 최신화
   Future<void> initWordData() async {
     final prefs = await SharedPreferences.getInstance();
     final cachedJson = prefs.getString('cached_today_word');
@@ -104,13 +106,12 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
           setState(() {
             wordData = decoded;
             isMemorized = checked;
-            isLoading = false; // 캐시로 즉시 로딩 해제!
+            isLoading = false;
           });
         }
       } catch (_) {}
     }
 
-    // 백그라운드에서 최신 JSON 확인 (첫 실행이면 여기서 받아옴)
     await fetchTodayWord(silent: cachedJson != null);
   }
 
@@ -131,7 +132,6 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
         final decoded = json.decode(rawString);
         final prefs = await SharedPreferences.getInstance();
 
-        // 다음 실행 시 0초 로딩을 위해 로컬에 캐싱 저장
         await prefs.setString('cached_today_word', rawString);
 
         final savedKey = 'memorized_${decoded["date"]}';
@@ -175,7 +175,6 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // 첫 실행으로 캐시가 아직 없는 0.5초 동안 보여줄 깔끔한 브랜드 소개 화면
     if (isLoading && wordData == null) {
       return Scaffold(
         backgroundColor: Colors.white,
@@ -249,7 +248,14 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
                 child: AdWidget(ad: _bannerAd!),
               )
             else
-              const SizedBox(height: 50),
+              Container(
+                height: 50,
+                alignment: Alignment.center,
+                child: Text(
+                  _adStatus,
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
+                ),
+              ),
           ],
         ),
       ),
