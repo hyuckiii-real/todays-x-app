@@ -23,13 +23,14 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: 안드로이드 플랫폼 복원 및 Manifest/Lint 완벽 세팅
+      - name: 안드로이드 플랫폼 복원 및 Manifest/Lint 세팅
         run: |
           flutter create . --org com.todaysx --platforms=android --project-name todays_word
           
-          # 치환(sed) 없이 100% 정상 XML 구조로 AndroidManifest.xml 통째로 덮어쓰기
-          cat << 'EOF' > android/app/src/main/AndroidManifest.xml
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+          python3 - << 'PYEOF'
+          import os
+
+          manifest_xml = """<manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.INTERNET"/>
               <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
 
@@ -69,14 +70,20 @@ jobs:
                   </intent>
               </queries>
           </manifest>
-          EOF
+          """
 
-          # 외부 라이브러리 Lint 충돌 방지 설정
-          if [ -f "android/app/build.gradle.kts" ]; then
-            printf '\nandroid {\n    lint {\n        checkReleaseBuilds = false\n        abortOnError = false\n    }\n}\n' >> android/app/build.gradle.kts
-          else
-            printf '\nandroid {\n    lintOptions {\n        checkReleaseBuilds false\n        abortOnError false\n    }\n}\n' >> android/app/build.gradle
-          fi
+          with open("android/app/src/main/AndroidManifest.xml", "w", encoding="utf-8") as f:
+              f.write(manifest_xml)
+
+          if os.path.exists("android/app/build.gradle.kts"):
+              with open("android/app/build.gradle.kts", "a", encoding="utf-8") as f:
+                  f.write("\nandroid {\n    lint {\n        checkReleaseBuilds = false\n        abortOnError = false\n    }\n}\n")
+          elif os.path.exists("android/app/build.gradle"):
+              with open("android/app/build.gradle", "a", encoding="utf-8") as f:
+                  f.write("\nandroid {\n    lintOptions {\n        checkReleaseBuilds false\n        abortOnError false\n    }\n}\n")
+          PYEOF
+
+          cat android/app/src/main/AndroidManifest.xml
 
       - name: 패키지 설치
         run: flutter pub get
