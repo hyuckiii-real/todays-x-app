@@ -40,8 +40,10 @@ class _TodayWordScreenState extends State<TodayWordScreen> {
       'https://raw.githubusercontent.com/hyuckiii-real/todays-x-data/main/today.json';
 
   // 구글 공식 안드로이드 테스트 배너 ID (출시 직전 본인 ID로 교체)
-  final String bannerAdUnitId = 'ca-app-pub-3940256099942544/6300978111';
+  //final String bannerAdUnitId = 'ca-app-pub-3940256099942544/6300978111';
   // 본인 실제 배너 ID: 'ca-app-pub-1402331019363344/4217254550';
+  // 본인 실제 배너 광고 단위 ID 적용
+  final String bannerAdUnitId = 'ca-app-pub-1402331019363344/4217254550';
 
   BannerAd? _bannerAd;
   bool _isBannerLoaded = false;
