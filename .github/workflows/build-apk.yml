@@ -23,14 +23,13 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: 안드로이드 플랫폼 복원 및 AdMob/Lint 완전 차단
+      - name: 안드로이드 플랫폼 복원 및 AdMob 세팅
         run: |
           flutter create . --org com.todaysx --platforms=android --project-name todays_word
 
           python3 - << 'PYEOF'
           import os, re
 
-          # 1. AndroidManifest.xml (테스트 앱 ID 적용)
           manifest_xml = """<manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.INTERNET"/>
               <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
@@ -75,12 +74,10 @@ jobs:
           with open("android/app/src/main/AndroidManifest.xml", "w", encoding="utf-8") as f:
               f.write(manifest_xml)
 
-          # 2. build.gradle.kts minSdk 23 및 모든 동적 Lint 태스크 차단 (whenTaskAdded)
           kts_path = "android/app/build.gradle.kts"
           if os.path.exists(kts_path):
               with open(kts_path, "r", encoding="utf-8") as f:
                   g = f.read()
-
               g = re.sub(r'minSdk\s*=\s*flutter\.minSdkVersion', 'minSdk = 23', g)
               g = g.replace(
                   'signingConfig = signingConfigs.getByName("debug")',
@@ -88,16 +85,8 @@ jobs:
                       isMinifyEnabled = false
                       isShrinkResources = false'''
               )
-
-              disable_lint = """
-          tasks.whenTaskAdded {
-              if (name.contains("lint", ignoreCase = true)) {
-                  enabled = false
-              }
-          }
-          """
               with open(kts_path, "w", encoding="utf-8") as f:
-                  f.write(g + disable_lint)
+                  f.write(g)
           PYEOF
 
       - name: 패키지 설치
@@ -109,8 +98,10 @@ jobs:
             dart run flutter_launcher_icons
           fi
 
-      - name: APK 빌드 (Release)
-        run: flutter build apk --release
+      - name: APK 빌드 (Lint 태스크 제외)
+        run: |
+          flutter build apk --release --config-only
+          cd android && ./gradlew assembleRelease -x lint -x lintVitalRelease -x lintVitalAnalyzeRelease -x lintVitalReportRelease
 
       - name: 완성된 APK 파일 업로드
         uses: actions/upload-artifact@v4
