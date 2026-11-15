@@ -23,11 +23,10 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: 안드로이드 플랫폼 복원 및 실제 AdMob/서명/Lint 차단 세팅
+      - name: 안드로이드 플랫폼 복원 및 실제 AdMob/서명/Lint 완전 차단
         run: |
           flutter create . --org com.todaysx --platforms=android --project-name todays_word
 
-          # 출시용 서명 키(Keystore) 자동 생성
           keytool -genkey -v -keystore android/app/upload-keystore.jks \
             -keyalg RSA -keysize 2048 -validity 10000 \
             -alias upload -storepass todaysx2026! -keypass todaysx2026! \
@@ -36,7 +35,6 @@ jobs:
           python3 - << 'PYEOF'
           import os, re
 
-          # 1. AndroidManifest.xml (본인 실제 애드몹 앱 ID 적용)
           manifest_xml = """<manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.INTERNET"/>
               <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
@@ -81,11 +79,9 @@ jobs:
           with open("android/app/src/main/AndroidManifest.xml", "w", encoding="utf-8") as f:
               f.write(manifest_xml)
 
-          # 2. key.properties 작성
           with open("android/key.properties", "w", encoding="utf-8") as f:
               f.write("storePassword=todaysx2026!\nkeyPassword=todaysx2026!\nkeyAlias=upload\nstoreFile=upload-keystore.jks\n")
 
-          # 3. build.gradle.kts 서명, minSdk 23, 모든 Lint 태스크 비활성화
           kts_path = "android/app/build.gradle.kts"
           if os.path.exists(kts_path):
               with open(kts_path, "r", encoding="utf-8") as f:
@@ -116,10 +112,11 @@ jobs:
                       isShrinkResources = false'''
               )
 
-              # AGP 9.0 lintVitalRelease 크래시 원천 차단
               disable_lint = """
-          tasks.matching { it.name.contains("lint", ignoreCase = true) }.configureEach {
-              enabled = false
+          tasks.whenTaskAdded {
+              if (name.contains("lint", ignoreCase = true)) {
+                  enabled = false
+              }
           }
           """
               with open(kts_path, "w", encoding="utf-8") as f:
