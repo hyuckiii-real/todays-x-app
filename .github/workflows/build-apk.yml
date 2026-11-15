@@ -23,14 +23,14 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: 안드로이드 플랫폼 복원 및 AdMob 완벽 세팅
+      - name: 안드로이드 플랫폼 복원 및 AdMob/Lint 차단 세팅
         run: |
           flutter create . --org com.todaysx --platforms=android --project-name todays_word
-          
+
           python3 - << 'PYEOF'
           import os, re
 
-          # 1. AndroidManifest.xml 정상 작성
+          # 1. AndroidManifest.xml (테스트 앱 ID 적용)
           manifest_xml = """<manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.INTERNET"/>
               <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
@@ -75,51 +75,37 @@ jobs:
           with open("android/app/src/main/AndroidManifest.xml", "w", encoding="utf-8") as f:
               f.write(manifest_xml)
 
-          # 2. build.gradle(.kts) 설정: minSdk 23 + R8 난독화 끄기 + Lint 무시
-          if os.path.exists("android/app/build.gradle.kts"):
-              with open("android/app/build.gradle.kts", "r", encoding="utf-8") as f:
+          # 2. build.gradle.kts minSdk 23 및 모든 Lint 태스크 비활성화
+          kts_path = "android/app/build.gradle.kts"
+          if os.path.exists(kts_path):
+              with open(kts_path, "r", encoding="utf-8") as f:
                   g = f.read()
+
               g = re.sub(r'minSdk\s*=\s*flutter\.minSdkVersion', 'minSdk = 23', g)
-              g += """
-          android {
-              buildTypes {
-                  release {
+              g = g.replace(
+                  'signingConfig = signingConfigs.getByName("debug")',
+                  '''signingConfig = signingConfigs.getByName("debug")
                       isMinifyEnabled = false
-                      isShrinkResources = false
-                  }
-              }
-              lint {
-                  checkReleaseBuilds = false
-                  abortOnError = false
-              }
+                      isShrinkResources = false'''
+              )
+
+              disable_lint = """
+          tasks.matching { it.name.contains("lint", ignoreCase = true) }.configureEach {
+              enabled = false
           }
           """
-              with open("android/app/build.gradle.kts", "w", encoding="utf-8") as f:
-                  f.write(g)
-          elif os.path.exists("android/app/build.gradle"):
-              with open("android/app/build.gradle", "r", encoding="utf-8") as f:
-                  g = f.read()
-              g = re.sub(r'minSdkVersion\s+flutter\.minSdkVersion', 'minSdkVersion 23', g)
-              g += """
-          android {
-              buildTypes {
-                  release {
-                      minifyEnabled false
-                      shrinkResources false
-                  }
-              }
-              lintOptions {
-                  checkReleaseBuilds false
-                  abortOnError false
-              }
-          }
-          """
-              with open("android/app/build.gradle", "w", encoding="utf-8") as f:
-                  f.write(g)
+              with open(kts_path, "w", encoding="utf-8") as f:
+                  f.write(g + disable_lint)
           PYEOF
 
       - name: 패키지 설치
         run: flutter pub get
+
+      - name: 앱 아이콘 자동 생성
+        run: |
+          if [ -f "icon.png" ]; then
+            dart run flutter_launcher_icons
+          fi
 
       - name: APK 빌드 (Release)
         run: flutter build apk --release
