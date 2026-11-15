@@ -23,7 +23,7 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: 안드로이드 플랫폼 복원 및 실제 AdMob/서명 세팅
+      - name: 안드로이드 플랫폼 복원 및 실제 AdMob/서명/Lint 차단 세팅
         run: |
           flutter create . --org com.todaysx --platforms=android --project-name todays_word
 
@@ -85,20 +85,16 @@ jobs:
           with open("android/key.properties", "w", encoding="utf-8") as f:
               f.write("storePassword=todaysx2026!\nkeyPassword=todaysx2026!\nkeyAlias=upload\nstoreFile=upload-keystore.jks\n")
 
-          # 3. build.gradle.kts 기존 구조 유지하며 서명과 minSdk만 정확히 주입
+          # 3. build.gradle.kts 서명, minSdk 23, 모든 Lint 태스크 비활성화
           kts_path = "android/app/build.gradle.kts"
           if os.path.exists(kts_path):
               with open(kts_path, "r", encoding="utf-8") as f:
                   g = f.read()
 
-              # 파일 최상단에 import 추가
               imports = "import java.util.Properties\nimport java.io.FileInputStream\n\n"
               g = imports + g
-
-              # minSdk 23 적용
               g = re.sub(r'minSdk\s*=\s*flutter\.minSdkVersion', 'minSdk = 23', g)
 
-              # 기존 signingConfigs / release 블록을 정식 release 서명으로 교체
               signing_code = """
           val keystoreProperties = Properties()
           val keystorePropertiesFile = rootProject.file("key.properties")
@@ -108,7 +104,6 @@ jobs:
           """
               g = g.replace("android {", signing_code + "\nandroid {", 1)
 
-              # release 블록 내부의 signingConfig 교체 및 난독화 끄기
               g = g.replace(
                   'signingConfig = signingConfigs.getByName("debug")',
                   '''signingConfig = signingConfigs.create("release") {
@@ -121,8 +116,14 @@ jobs:
                       isShrinkResources = false'''
               )
 
+              # AGP 9.0 lintVitalRelease 크래시 원천 차단
+              disable_lint = """
+          tasks.matching { it.name.contains("lint", ignoreCase = true) }.configureEach {
+              enabled = false
+          }
+          """
               with open(kts_path, "w", encoding="utf-8") as f:
-                  f.write(g)
+                  f.write(g + disable_lint)
           PYEOF
 
       - name: 패키지 설치
