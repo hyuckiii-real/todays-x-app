@@ -85,19 +85,16 @@ jobs:
           with open("android/key.properties", "w", encoding="utf-8") as f:
               f.write("storePassword=todaysx2026!\nkeyPassword=todaysx2026!\nkeyAlias=upload\nstoreFile=upload-keystore.jks\n")
 
-          # 3. build.gradle.kts 정식 서명 및 minSdk 설정
+          # 3. build.gradle.kts 정식 서명 및 minSdk 설정 (상단 import 없이 안전하게 작성)
           if os.path.exists("android/app/build.gradle.kts"):
               with open("android/app/build.gradle.kts", "r", encoding="utf-8") as f:
                   g = f.read()
               g = re.sub(r'minSdk\s*=\s*flutter\.minSdkVersion', 'minSdk = 23', g)
               signing_block = """
-          import java.util.Properties
-          import java.io.FileInputStream
-
-          val keystoreProperties = Properties()
+          val keystoreProperties = java.util.Properties()
           val keystorePropertiesFile = rootProject.file("key.properties")
           if (keystorePropertiesFile.exists()) {
-              keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+              keystoreProperties.load(java.io.FileInputStream(keystorePropertiesFile))
           }
 
           android {
@@ -128,6 +125,12 @@ jobs:
 
       - name: 패키지 설치
         run: flutter pub get
+
+      - name: 앱 아이콘 자동 생성
+        run: |
+          if [ -f "icon.png" ]; then
+            dart run flutter_launcher_icons
+          fi
 
       - name: 스토어 배포용 AAB 빌드 (Release)
         run: flutter build appbundle --release
