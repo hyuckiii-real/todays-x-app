@@ -85,42 +85,44 @@ jobs:
           with open("android/key.properties", "w", encoding="utf-8") as f:
               f.write("storePassword=todaysx2026!\nkeyPassword=todaysx2026!\nkeyAlias=upload\nstoreFile=upload-keystore.jks\n")
 
-          # 3. build.gradle.kts 정식 서명 및 minSdk 설정 (상단 import 없이 안전하게 작성)
-          if os.path.exists("android/app/build.gradle.kts"):
-              with open("android/app/build.gradle.kts", "r", encoding="utf-8") as f:
+          # 3. build.gradle.kts 기존 구조 유지하며 서명과 minSdk만 정확히 주입
+          kts_path = "android/app/build.gradle.kts"
+          if os.path.exists(kts_path):
+              with open(kts_path, "r", encoding="utf-8") as f:
                   g = f.read()
+
+              # 파일 최상단에 import 추가
+              imports = "import java.util.Properties\nimport java.io.FileInputStream\n\n"
+              g = imports + g
+
+              # minSdk 23 적용
               g = re.sub(r'minSdk\s*=\s*flutter\.minSdkVersion', 'minSdk = 23', g)
-              signing_block = """
-          val keystoreProperties = java.util.Properties()
+
+              # 기존 signingConfigs / release 블록을 정식 release 서명으로 교체
+              signing_code = """
+          val keystoreProperties = Properties()
           val keystorePropertiesFile = rootProject.file("key.properties")
           if (keystorePropertiesFile.exists()) {
-              keystoreProperties.load(java.io.FileInputStream(keystorePropertiesFile))
-          }
-
-          android {
-              signingConfigs {
-                  create("release") {
-                      keyAlias = keystoreProperties.getProperty("keyAlias")
-                      keyPassword = keystoreProperties.getProperty("keyPassword")
-                      storeFile = file(keystoreProperties.getProperty("storeFile"))
-                      storePassword = keystoreProperties.getProperty("storePassword")
-                  }
-              }
-              buildTypes {
-                  release {
-                      signingConfig = signingConfigs.getByName("release")
-                      isMinifyEnabled = false
-                      isShrinkResources = false
-                  }
-              }
-              lint {
-                  checkReleaseBuilds = false
-                  abortOnError = false
-              }
+              keystoreProperties.load(FileInputStream(keystorePropertiesFile))
           }
           """
-              with open("android/app/build.gradle.kts", "w", encoding="utf-8") as f:
-                  f.write(g + signing_block)
+              g = g.replace("android {", signing_code + "\nandroid {", 1)
+
+              # release 블록 내부의 signingConfig 교체 및 난독화 끄기
+              g = g.replace(
+                  'signingConfig = signingConfigs.getByName("debug")',
+                  '''signingConfig = signingConfigs.create("release") {
+                          keyAlias = keystoreProperties.getProperty("keyAlias")
+                          keyPassword = keystoreProperties.getProperty("keyPassword")
+                          storeFile = file(keystoreProperties.getProperty("storeFile"))
+                          storePassword = keystoreProperties.getProperty("storePassword")
+                      }
+                      isMinifyEnabled = false
+                      isShrinkResources = false'''
+              )
+
+              with open(kts_path, "w", encoding="utf-8") as f:
+                  f.write(g)
           PYEOF
 
       - name: 패키지 설치
