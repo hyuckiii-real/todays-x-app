@@ -84,7 +84,7 @@ jobs:
 
               imports = "import java.util.Properties\nimport java.io.FileInputStream\n\n"
               g = imports + g
-              g = re.sub(r"minSdk\s*=\s*flutter\.minSdkVersion", "minSdk = 23", g)
+              g = re.sub(r"minSdk\s*=\s*flutter\.minSdkVersion", "minSdk = 24", g)
 
               signing_code = (
                   "val keystoreProperties = Properties()\n"
