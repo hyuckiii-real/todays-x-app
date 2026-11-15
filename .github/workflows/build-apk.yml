@@ -23,7 +23,7 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: 안드로이드 플랫폼 복원 및 AdMob/Lint 차단 세팅
+      - name: 안드로이드 플랫폼 복원 및 AdMob/Lint 완전 차단
         run: |
           flutter create . --org com.todaysx --platforms=android --project-name todays_word
 
@@ -75,7 +75,7 @@ jobs:
           with open("android/app/src/main/AndroidManifest.xml", "w", encoding="utf-8") as f:
               f.write(manifest_xml)
 
-          # 2. build.gradle.kts minSdk 23 및 모든 Lint 태스크 비활성화
+          # 2. build.gradle.kts minSdk 23 및 모든 동적 Lint 태스크 차단 (whenTaskAdded)
           kts_path = "android/app/build.gradle.kts"
           if os.path.exists(kts_path):
               with open(kts_path, "r", encoding="utf-8") as f:
@@ -90,8 +90,10 @@ jobs:
               )
 
               disable_lint = """
-          tasks.matching { it.name.contains("lint", ignoreCase = true) }.configureEach {
-              enabled = false
+          tasks.whenTaskAdded {
+              if (name.contains("lint", ignoreCase = true)) {
+                  enabled = false
+              }
           }
           """
               with open(kts_path, "w", encoding="utf-8") as f:
