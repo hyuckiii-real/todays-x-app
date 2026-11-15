@@ -32,50 +32,45 @@ jobs:
             -alias upload -storepass todaysx2026! -keypass todaysx2026! \
             -dname "CN=TodaysX, OU=Dev, O=TodaysX, L=Seoul, S=Seoul, C=KR"
 
-          python3 - << 'PYEOF'
+          python3 -c '
           import os, re
 
-          manifest_xml = """<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-              <uses-permission android:name="android.permission.INTERNET"/>
-              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
-
-              <application
-                  android:label="오늘의 영어단어"
-                  android:name="${applicationName}"
-                  android:icon="@mipmap/ic_launcher">
-                  <activity
-                      android:name=".MainActivity"
-                      android:exported="true"
-                      android:launchMode="singleTop"
-                      android:taskAffinity=""
-                      android:theme="@style/LaunchTheme"
-                      android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
-                      android:hardwareAccelerated="true"
-                      android:windowSoftInputMode="adjustResize">
-                      <meta-data
-                        android:name="io.flutter.embedding.android.NormalTheme"
-                        android:resource="@style/NormalTheme"
-                        />
-                      <intent-filter>
-                          <action android:name="android.intent.action.MAIN"/>
-                          <category android:name="android.intent.category.LAUNCHER"/>
-                      </intent-filter>
-                  </activity>
-                  <meta-data
-                      android:name="flutterEmbedding"
-                      android:value="2" />
-                  <meta-data
-                      android:name="com.google.android.gms.ads.APPLICATION_ID"
-                      android:value="ca-app-pub-1402331019363344~4640072179"/>
-              </application>
-              <queries>
-                  <intent>
-                      <action android:name="android.intent.action.PROCESS_TEXT"/>
-                      <data android:mimeType="text/plain"/>
-                  </intent>
-              </queries>
-          </manifest>
-          """
+          manifest_xml = (
+              "<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">\n"
+              "    <uses-permission android:name=\"android.permission.INTERNET\"/>\n"
+              "    <uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\"/>\n"
+              "    <application\n"
+              "        android:label=\"오늘의 영어단어\"\n"
+              "        android:name=\"${applicationName}\"\n"
+              "        android:icon=\"@mipmap/ic_launcher\">\n"
+              "        <activity\n"
+              "            android:name=\".MainActivity\"\n"
+              "            android:exported=\"true\"\n"
+              "            android:launchMode=\"singleTop\"\n"
+              "            android:taskAffinity=\"\"\n"
+              "            android:theme=\"@style/LaunchTheme\"\n"
+              "            android:configChanges=\"orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode\"\n"
+              "            android:hardwareAccelerated=\"true\"\n"
+              "            android:windowSoftInputMode=\"adjustResize\">\n"
+              "            <meta-data\n"
+              "                android:name=\"io.flutter.embedding.android.NormalTheme\"\n"
+              "                android:resource=\"@style/NormalTheme\"/>\n"
+              "            <intent-filter>\n"
+              "                <action android:name=\"android.intent.action.MAIN\"/>\n"
+              "                <category android:name=\"android.intent.category.LAUNCHER\"/>\n"
+              "            </intent-filter>\n"
+              "        </activity>\n"
+              "        <meta-data android:name=\"flutterEmbedding\" android:value=\"2\"/>\n"
+              "        <meta-data android:name=\"com.google.android.gms.ads.APPLICATION_ID\" android:value=\"ca-app-pub-1402331019363344~4640072179\"/>\n"
+              "    </application>\n"
+              "    <queries>\n"
+              "        <intent>\n"
+              "            <action android:name=\"android.intent.action.PROCESS_TEXT\"/>\n"
+              "            <data android:mimeType=\"text/plain\"/>\n"
+              "        </intent>\n"
+              "    </queries>\n"
+              "</manifest>\n"
+          )
           with open("android/app/src/main/AndroidManifest.xml", "w", encoding="utf-8") as f:
               f.write(manifest_xml)
 
@@ -89,8 +84,50 @@ jobs:
 
               imports = "import java.util.Properties\nimport java.io.FileInputStream\n\n"
               g = imports + g
-              g = re.sub(r'minSdk\s*=\s*flutter\.minSdkVersion', 'minSdk = 23', g)
+              g = re.sub(r"minSdk\s*=\s*flutter\.minSdkVersion", "minSdk = 23", g)
 
-              signing_code = """
-          val keystoreProperties = Properties()
-          val keystorePropertiesFile = rootProject.file
+              signing_code = (
+                  "val keystoreProperties = Properties()\n"
+                  "val keystorePropertiesFile = rootProject.file(\"key.properties\")\n"
+                  "if (keystorePropertiesFile.exists()) {\n"
+                  "    keystoreProperties.load(FileInputStream(keystorePropertiesFile))\n"
+                  "}\n\n"
+              )
+              g = g.replace("android {", signing_code + "android {", 1)
+
+              rel_cfg = (
+                  "signingConfig = signingConfigs.create(\"release\") {\n"
+                  "                keyAlias = keystoreProperties.getProperty(\"keyAlias\")\n"
+                  "                keyPassword = keystoreProperties.getProperty(\"keyPassword\")\n"
+                  "                storeFile = file(keystoreProperties.getProperty(\"storeFile\"))\n"
+                  "                storePassword = keystoreProperties.getProperty(\"storePassword\")\n"
+                  "            }\n"
+                  "            isMinifyEnabled = false\n"
+                  "            isShrinkResources = false"
+              )
+              g = g.replace("signingConfig = signingConfigs.getByName(\"debug\")", rel_cfg)
+
+              with open(kts_path, "w", encoding="utf-8") as f:
+                  f.write(g)
+          '
+
+      - name: 패키지 설치
+        run: flutter pub get
+
+      - name: 앱 아이콘 자동 생성
+        run: |
+          if [ -f "icon.png" ]; then
+            dart run flutter_launcher_icons
+          fi
+
+      - name: 스토어 배포용 AAB 빌드 (Lint 태스크 제외)
+        run: |
+          cd android && ./gradlew bundleRelease -x lint -x lintVitalRelease -x lintVitalAnalyzeRelease -x lintVitalReportRelease
+
+      - name: 완성된 AAB 및 서명키 업로드
+        uses: actions/upload-artifact@v4
+        with:
+          name: todays-word-playstore-bundle
+          path: |
+            build/app/outputs/bundle/release/app-release.aab
+            android/app/upload-keystore.jks
