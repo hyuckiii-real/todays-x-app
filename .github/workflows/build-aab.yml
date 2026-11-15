@@ -93,46 +93,4 @@ jobs:
 
               signing_code = """
           val keystoreProperties = Properties()
-          val keystorePropertiesFile = rootProject.file("key.properties")
-          if (keystorePropertiesFile.exists()) {
-              keystoreProperties.load(FileInputStream(keystorePropertiesFile))
-          }
-          """
-              g = g.replace("android {", signing_code + "\nandroid {", 1)
-
-              g = g.replace(
-                  'signingConfig = signingConfigs.getByName("debug")',
-                  '''signingConfig = signingConfigs.create("release") {
-                          keyAlias = keystoreProperties.getProperty("keyAlias")
-                          keyPassword = keystoreProperties.getProperty("keyPassword")
-                          storeFile = file(keystoreProperties.getProperty("storeFile"))
-                          storePassword = keystoreProperties.getProperty("storePassword")
-                      }
-                      isMinifyEnabled = false
-                      isShrinkResources = false'''
-              )
-              with open(kts_path, "w", encoding="utf-8") as f:
-                  f.write(g)
-          PYEOF
-
-      - name: 패키지 설치
-        run: flutter pub get
-
-      - name: 앱 아이콘 자동 생성
-        run: |
-          if [ -f "icon.png" ]; then
-            dart run flutter_launcher_icons
-          fi
-
-      - name: 스토어 배포용 AAB 빌드 (Lint 태스크 제외)
-        run: |
-          flutter build appbundle --release --config-only
-          cd android && ./gradlew bundleRelease -x lint -x lintVitalRelease -x lintVitalAnalyzeRelease -x lintVitalReportRelease
-
-      - name: 완성된 AAB 및 서명키 업로드
-        uses: actions/upload-artifact@v4
-        with:
-          name: todays-word-playstore-bundle
-          path: |
-            build/app/outputs/bundle/release/app-release.aab
-            android/app/upload-keystore.jks
+          val keystorePropertiesFile = rootProject.file
